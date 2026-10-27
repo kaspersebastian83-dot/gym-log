@@ -18,6 +18,8 @@ h1{font-size:20px;margin:6px 0 10px}
 .exh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .muted{color:var(--mut)}.small{font-size:13px}
 .hint{color:var(--acc);font-size:13px;margin:2px 0 6px}
+.hint.bump.deload{color:var(--warn);border-color:var(--warn);background:#2a2008}
+.plates{margin:4px 0 2px}
 .hint.bump{display:block;width:100%;text-align:left;background:#0b1f12;border:1px solid var(--acc);border-radius:10px;padding:10px 12px;min-height:44px}
 .pill{background:#0b1f12;color:var(--acc);border-radius:99px;padding:2px 10px;font-variant-numeric:tabular-nums;font-size:14px;margin-left:8px}
 .set{display:flex;align-items:center;gap:6px;margin:6px 0}
@@ -51,7 +53,7 @@ svg{width:100%;height:auto;display:block}
 </div>
 <div id="restbar"></div>
 <script>
-const APP_VERSION='1.2.0'; // bump on every change
+const APP_VERSION='1.3.0'; // bump on every change
 const KEY='gymlog.v1';
 const PLAN={
  A:{name:'Session A',ex:[
@@ -65,7 +67,7 @@ const PLAN={
   {id:'legpress',rest:120,n:'Leg press (or split squat)',sets:3,reps:10,t:'kg'},
   {id:'ohp',rest:90,n:'DB shoulder press',sets:3,reps:10,t:'kg'},
   {id:'lat',rest:90,n:'Lat pulldown',sets:3,reps:10,t:'kg'},
-  {id:'deadlift',rest:150,n:'Deadlift (trap bar or barbell)',sets:3,reps:8,t:'kg'},
+  {id:'deadlift',rest:150,bar:20,n:'Deadlift (trap bar or barbell)',sets:3,reps:8,t:'kg'},
   {id:'face',rest:60,n:'Face pulls',sets:3,reps:15,t:'kg'},
   {id:'pushdown',rest:60,n:'Triceps pushdown (cable)',sets:2,reps:12,t:'kg'},
   {id:'carry',rest:90,n:"Farmer's carry (reps = metres)",sets:3,reps:30,t:'kg'}]}
@@ -105,15 +107,39 @@ function fmtSets(ex,sets){
   const same=sets.every(s=>s.w===w);
   return same? w+' kg × '+sets.map(s=>s.r).join(', ') : sets.map(s=>s.w+'×'+s.r).join(', ');
 }
+function histFor(id,before){
+  const out=[],end=before==null?db.sessions.length:before;
+  for(let i=0;i<end;i++){const sets=db.sessions[i].entries[id];if(sets&&sets.length)out.push({sets,date:db.sessions[i].date})}
+  return out;
+}
+function bestOf(list){let b=null;list.forEach(x=>x.sets.forEach(s=>{if(!b||s.w>b.w||(s.w===b.w&&s.r>b.r))b={w:s.w,r:s.r}}));return b}
+function isPR(s,best){const w=parseFloat(s.w)||0,r=parseFloat(s.r)||0;return !!best&&w>0&&(w>best.w||(w===best.w&&r>best.r))}
+function roundKg(x){return Math.round(x/STEP_KG)*STEP_KG}
+function hitAll(ex,sets){return sets.length>=2&&sets.every(s=>s.r>=ex.reps)}
 function suggest(ex){
-  const last=lastFor(ex.id);if(!last)return null;
-  const allHit=last.sets.length>=2&&last.sets.every(s=>s.r>=ex.reps);
+  // Returns {msg, w}: w is a target weight the hint button can apply, or null.
+  const hist=histFor(ex.id),last=hist[hist.length-1];if(!last)return null;
+  const allHit=hitAll(ex,last.sets);
   if(ex.t==='sec'){
     const best=Math.max(...last.sets.map(s=>s.r));
-    return allHit?'Hit all targets – try '+(best+STEP_SEC)+' s':'Aim for '+ex.reps+' s every set';
+    return{msg:allHit?'Hit all targets – try '+(best+STEP_SEC)+' s':'Aim for '+ex.reps+' s every set',w:null};
   }
   const top=Math.max(...last.sets.map(s=>s.w));
-  return allHit?'Hit all reps – try '+(top+STEP_KG)+' kg':'Stay at '+top+' kg until every set hits '+ex.reps+' reps';
+  if(allHit)return{msg:'Hit all reps – try '+(top+STEP_KG)+' kg',w:top+STEP_KG};
+  const l3=hist.slice(-3);
+  if(l3.length===3&&top>0&&l3.every(x=>Math.max(...x.sets.map(s=>s.w))===top&&!hitAll(ex,x.sets))){
+    const dl=roundKg(top*0.9);
+    if(dl<top)return{msg:'Stuck at '+top+' kg for 3 sessions – deload to '+dl+' kg and build back up',w:dl,deload:true};
+  }
+  return{msg:'Stay at '+top+' kg until every set hits '+ex.reps+' reps',w:null};
+}
+function plates(ex,w){
+  w=parseFloat(w);if(!ex.bar||!(w>0))return '';
+  let per=(w-ex.bar)/2;
+  if(per<0)return '🧮 Below the '+ex.bar+' kg bar';
+  if(per===0)return '🧮 Just the bar ('+ex.bar+' kg)';
+  const out=[];for(const p of [25,20,15,10,5,2.5,1.25]){while(per>=p-1e-9){out.push(p);per-=p}}
+  return '🧮 Per side ('+ex.bar+' kg bar): '+out.join(' + ')+(per>1e-9?' (+'+(+per.toFixed(2))+' kg not loadable)':'');
 }
 function startWeight(ex){
   const last=lastFor(ex.id);if(!last)return '';
@@ -123,10 +149,6 @@ function startWeight(ex){
   return allHit?top+STEP_KG:top;
 }
 
-function canBump(ex){
-  const last=lastFor(ex.id);
-  return !!last&&last.sets.length>=2&&last.sets.every(s=>s.r>=ex.reps);
-}
 function prefillSets(ex){
   // Copy last session's weight and reps set by set; extra sets repeat the last logged set.
   const last=lastFor(ex.id),n=targetSets(ex);
@@ -158,8 +180,9 @@ function finishSession(){
     if(sets.length){entries[id]=sets;any=true}
   });
   if(!any){if(!confirm('No sets ticked off. Discard this session?'))return;db.draft=null;save();render();return}
+  let prs=0;Object.keys(entries).forEach(id=>{const ex=exById(id),best=bestOf(histFor(id));if(ex&&ex.t==='kg'&&entries[id].some(x=>isPR(x,best)))prs++});
   db.sessions.push({id:Date.now(),date:new Date(d.start).toISOString(),type:d.type,mins:Math.round((Date.now()-d.start)/60000),entries});
-  db.draft=null;rest=null;save();tab='history';render();toast('Session saved 💪');
+  db.draft=null;rest=null;save();tab='history';render();toast('Session saved 💪'+(prs?' · '+prs+' PR'+(prs>1?'s':'')+' 🏆':''));
 }
 
 function viewStart(){
@@ -185,14 +208,17 @@ function viewToday(){
     const sets=d.entries[ex.id],last=lastFor(ex.id),sg=suggest(ex);
     html+='<div class="card"><div class="exh"><b>'+h(ex.n)+'</b><span class="muted small">'+targetSets(ex)+' × '+ex.reps+(ex.t==='sec'?' s':'')+' · '+mmss((ex.rest||REST_SEC)*1000)+' rest</span></div>';
     html+=last?'<div class="muted small">Last: '+h(fmtSets(ex,last.sets))+' ('+fmtDate(last.date)+')</div>':'<div class="muted small">First time – start light.</div>';
-    if(sg&&ex.t==='kg'&&canBump(ex)&&!d.bumped?.[ex.id])html+='<button class="hint bump" data-act="bump" data-ex="'+ex.id+'">'+h(sg)+' — tap to apply</button>';
-    else if(sg&&!d.bumped?.[ex.id])html+='<div class="hint">'+h(sg)+'</div>';
+    const best=bestOf(histFor(ex.id));
+    if(sg&&sg.w!=null&&!d.bumped?.[ex.id])html+='<button class="hint bump'+(sg.deload?' deload':'')+'" data-act="bump" data-ex="'+ex.id+'" data-w="'+sg.w+'">'+h(sg.msg)+' — tap to apply</button>';
+    else if(sg&&!d.bumped?.[ex.id])html+='<div class="hint">'+h(sg.msg)+'</div>';
     sets.forEach((s,i)=>{
-      html+='<div class="set'+(s.done?' done':'')+'" id="set-'+ex.id+'-'+i+'"><span class="n">'+(i+1)+'</span>';
+      const pr=s.done&&ex.t==='kg'&&isPR(s,best);
+      html+='<div class="set'+(s.done?' done':'')+'" id="set-'+ex.id+'-'+i+'"><span class="n"'+(pr?' title="New PR"':'')+'>'+(pr?'🏆':(i+1))+'</span>';
       if(ex.t==='kg')html+='<input type="number" inputmode="decimal" step="0.5" data-ex="'+ex.id+'" data-i="'+i+'" data-k="w" value="'+h(s.w)+'" placeholder="kg"><span class="u">kg</span>';
       html+='<input type="number" inputmode="numeric" data-ex="'+ex.id+'" data-i="'+i+'" data-k="r" value="'+h(s.r)+'" placeholder="'+(ex.t==='sec'?'sec':'reps')+'"><span class="u">'+(ex.t==='sec'?'sec':'reps')+'</span>';
       html+='<button class="chk'+(s.done?' on':'')+'" data-act="tick" data-ex="'+ex.id+'" data-i="'+i+'">✓</button></div>';
     });
+    if(ex.bar){const cur=(sets.find(x=>!x.done)||sets[0]||{}).w;html+='<div class="muted small plates" id="plates-'+ex.id+'">'+plates(ex,cur)+'</div>'}
     html+='<button class="ghost" data-act="addset" data-ex="'+ex.id+'">+ set</button></div>';
   });
   html+='<button class="big" data-act="finish">Finish session</button><button class="big alt danger" data-act="discard">Discard session</button>';
@@ -219,7 +245,8 @@ function viewHistory(){
   db.sessions.slice().reverse().forEach(s=>{
     if(!PLAN[s.type])return;
     html+='<div class="card"><div class="row"><b>'+fmtDate(s.date)+' · '+PLAN[s.type].name+'</b><span class="muted small">'+s.mins+' min</span></div>';
-    PLAN[s.type].ex.forEach(ex=>{const sets=s.entries[ex.id];if(sets)html+='<div class="small"><span class="muted">'+h(ex.n.replace(/ \(.*\)/,''))+':</span> '+h(fmtSets(ex,sets))+'</div>'});
+    const idx=db.sessions.indexOf(s);
+    PLAN[s.type].ex.forEach(ex=>{const sets=s.entries[ex.id];if(sets){const best=bestOf(histFor(ex.id,idx)),pr=ex.t==='kg'&&sets.some(x=>isPR(x,best));html+='<div class="small"><span class="muted">'+h(ex.n.replace(/ \(.*\)/,''))+':</span> '+h(fmtSets(ex,sets))+(pr?' 🏆':'')+'</div>'}});
     html+='<button class="ghost danger" data-act="del" data-id="'+s.id+'">Delete</button></div>';
   });
   return html;
@@ -268,9 +295,9 @@ document.addEventListener('click',e=>{
     arr.push({w:l.w,r:l.r,done:false});save();render();
   }
   else if(a==='bump'){
-    const ex=exById(b.dataset.ex),top=Math.max(...lastFor(ex.id).sets.map(s=>s.w));
-    db.draft.entries[ex.id].forEach(s=>{if(!s.done){s.w=top+STEP_KG;s.r=ex.reps}});
-    (db.draft.bumped=db.draft.bumped||{})[ex.id]=true;save();render();toast(ex.n.replace(/ \(.*\)/,'')+': '+(top+STEP_KG)+' kg');
+    const ex=exById(b.dataset.ex),w=parseFloat(b.dataset.w);
+    db.draft.entries[ex.id].forEach(s=>{if(!s.done){s.w=w;s.r=ex.reps}});
+    (db.draft.bumped=db.draft.bumped||{})[ex.id]=true;save();render();toast(ex.n.replace(/ \(.*\)/,'')+': '+w+' kg');
   }
   else if(a==='finish')finishSession();
   else if(a==='discard'){if(confirm('Discard this session?')){db.draft=null;rest=null;save();render()}}
@@ -286,6 +313,7 @@ document.addEventListener('click',e=>{if(e.target.id==='restbar'){rest=null;tick
 document.addEventListener('input',e=>{
   const t=e.target;if(!t.dataset||!t.dataset.k||!db.draft)return;
   db.draft.entries[t.dataset.ex][+t.dataset.i][t.dataset.k]=t.value;save();
+  const pl=document.getElementById('plates-'+t.dataset.ex);if(pl&&t.dataset.k==='w')pl.textContent=plates(exById(t.dataset.ex),t.value);
 });
 document.addEventListener('change',e=>{
   const t=e.target;
