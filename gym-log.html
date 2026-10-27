@@ -25,6 +25,8 @@ h1{font-size:20px;margin:6px 0 10px}
 .set input{width:72px;padding:10px 6px;border-radius:10px;border:1px solid var(--line);background:#0f1115;color:var(--tx);font-size:17px;text-align:center}
 .set .u{color:var(--mut);font-size:13px;margin-right:4px}
 .chk{margin-left:auto;width:48px;height:44px;border-radius:10px;border:1px solid var(--line);background:#0f1115;color:var(--mut);font-size:20px}
+.set.next{outline:2px solid var(--acc);outline-offset:3px;border-radius:10px}
+.set.done input{opacity:.55}
 .chk.on{background:var(--acc);color:#0b1f12;border-color:var(--acc)}
 button{font:inherit;cursor:pointer}
 .big{width:100%;padding:14px;border-radius:12px;border:0;background:var(--acc);color:#0b1f12;font-weight:700;font-size:17px;margin:6px 0}
@@ -49,24 +51,24 @@ svg{width:100%;height:auto;display:block}
 </div>
 <div id="restbar"></div>
 <script>
-const APP_VERSION='1.1.0'; // bump on every change
+const APP_VERSION='1.2.0'; // bump on every change
 const KEY='gymlog.v1';
 const PLAN={
  A:{name:'Session A',ex:[
-  {id:'goblet',n:'Goblet squat (or leg press)',sets:3,reps:10,t:'kg'},
-  {id:'chest',n:'Chest press (DB or machine)',sets:3,reps:10,t:'kg'},
-  {id:'row',n:'Seated cable row',sets:3,reps:10,t:'kg'},
-  {id:'rdl',n:'Romanian deadlift (DB)',sets:3,reps:10,t:'kg'},
-  {id:'curl',n:'DB biceps curl',sets:2,reps:12,t:'kg'},
-  {id:'pallof',n:'Pallof press (each side)',sets:3,reps:10,t:'kg'}]},
+  {id:'goblet',rest:120,n:'Goblet squat (or leg press)',sets:3,reps:10,t:'kg'},
+  {id:'chest',rest:90,n:'Chest press (DB or machine)',sets:3,reps:10,t:'kg'},
+  {id:'row',rest:90,n:'Seated cable row',sets:3,reps:10,t:'kg'},
+  {id:'rdl',rest:120,n:'Romanian deadlift (DB)',sets:3,reps:10,t:'kg'},
+  {id:'curl',rest:60,n:'DB biceps curl',sets:2,reps:12,t:'kg'},
+  {id:'pallof',rest:60,n:'Pallof press (each side)',sets:3,reps:10,t:'kg'}]},
  B:{name:'Session B',ex:[
-  {id:'legpress',n:'Leg press (or split squat)',sets:3,reps:10,t:'kg'},
-  {id:'ohp',n:'DB shoulder press',sets:3,reps:10,t:'kg'},
-  {id:'lat',n:'Lat pulldown',sets:3,reps:10,t:'kg'},
-  {id:'deadlift',n:'Deadlift (trap bar or barbell)',sets:3,reps:8,t:'kg'},
-  {id:'face',n:'Face pulls',sets:3,reps:15,t:'kg'},
-  {id:'pushdown',n:'Triceps pushdown (cable)',sets:2,reps:12,t:'kg'},
-  {id:'carry',n:"Farmer's carry (reps = metres)",sets:3,reps:30,t:'kg'}]}
+  {id:'legpress',rest:120,n:'Leg press (or split squat)',sets:3,reps:10,t:'kg'},
+  {id:'ohp',rest:90,n:'DB shoulder press',sets:3,reps:10,t:'kg'},
+  {id:'lat',rest:90,n:'Lat pulldown',sets:3,reps:10,t:'kg'},
+  {id:'deadlift',rest:150,n:'Deadlift (trap bar or barbell)',sets:3,reps:8,t:'kg'},
+  {id:'face',rest:60,n:'Face pulls',sets:3,reps:15,t:'kg'},
+  {id:'pushdown',rest:60,n:'Triceps pushdown (cable)',sets:2,reps:12,t:'kg'},
+  {id:'carry',rest:90,n:"Farmer's carry (reps = metres)",sets:3,reps:30,t:'kg'}]}
 };
 const ALL=[].concat(PLAN.A.ex,PLAN.B.ex);
 const REST_SEC=75, SESSION_MIN=45, STEP_KG=2.5, STEP_SEC=5;
@@ -138,6 +140,17 @@ function startSession(type){
   db.draft={type,start:Date.now(),entries};
   save();render();
 }
+function nextUndone(){
+  const d=db.draft;if(!d||!PLAN[d.type])return null;
+  for(const ex of PLAN[d.type].ex){const i=(d.entries[ex.id]||[]).findIndex(s=>!s.done);if(i>=0)return 'set-'+ex.id+'-'+i}
+  return null;
+}
+function scrollToNext(){
+  const id=nextUndone(),el=id?document.getElementById(id):document.querySelector('[data-act=finish]');
+  if(!el)return;
+  if(id){el.classList.add('next');setTimeout(()=>el.classList.remove('next'),1600)}
+  try{el.scrollIntoView({behavior:'smooth',block:'center'})}catch(e){}
+}
 function finishSession(){
   const d=db.draft,entries={};let any=false;
   Object.keys(d.entries).forEach(id=>{
@@ -170,12 +183,12 @@ function viewToday(){
   let html='<div class="card"><b>'+plan.name+'</b><span class="pill" id="elapsed">00:00</span><div class="muted small">Target: '+SESSION_MIN+' min incl. warm-up</div></div>';
   plan.ex.forEach(ex=>{
     const sets=d.entries[ex.id],last=lastFor(ex.id),sg=suggest(ex);
-    html+='<div class="card"><div class="exh"><b>'+h(ex.n)+'</b><span class="muted small">'+targetSets(ex)+' × '+ex.reps+(ex.t==='sec'?' s':'')+'</span></div>';
+    html+='<div class="card"><div class="exh"><b>'+h(ex.n)+'</b><span class="muted small">'+targetSets(ex)+' × '+ex.reps+(ex.t==='sec'?' s':'')+' · '+mmss((ex.rest||REST_SEC)*1000)+' rest</span></div>';
     html+=last?'<div class="muted small">Last: '+h(fmtSets(ex,last.sets))+' ('+fmtDate(last.date)+')</div>':'<div class="muted small">First time – start light.</div>';
     if(sg&&ex.t==='kg'&&canBump(ex)&&!d.bumped?.[ex.id])html+='<button class="hint bump" data-act="bump" data-ex="'+ex.id+'">'+h(sg)+' — tap to apply</button>';
     else if(sg&&!d.bumped?.[ex.id])html+='<div class="hint">'+h(sg)+'</div>';
     sets.forEach((s,i)=>{
-      html+='<div class="set"><span class="n">'+(i+1)+'</span>';
+      html+='<div class="set'+(s.done?' done':'')+'" id="set-'+ex.id+'-'+i+'"><span class="n">'+(i+1)+'</span>';
       if(ex.t==='kg')html+='<input type="number" inputmode="decimal" step="0.5" data-ex="'+ex.id+'" data-i="'+i+'" data-k="w" value="'+h(s.w)+'" placeholder="kg"><span class="u">kg</span>';
       html+='<input type="number" inputmode="numeric" data-ex="'+ex.id+'" data-i="'+i+'" data-k="r" value="'+h(s.r)+'" placeholder="'+(ex.t==='sec'?'sec':'reps')+'"><span class="u">'+(ex.t==='sec'?'sec':'reps')+'</span>';
       html+='<button class="chk'+(s.done?' on':'')+'" data-act="tick" data-ex="'+ex.id+'" data-i="'+i+'">✓</button></div>';
@@ -246,8 +259,9 @@ document.addEventListener('click',e=>{
   else if(a==='start')startSession(b.dataset.type);
   else if(a==='tick'){
     const s=db.draft.entries[b.dataset.ex][+b.dataset.i];s.done=!s.done;
-    if(s.done)rest={end:Date.now()+REST_SEC*1000};else rest=null;
+    if(s.done)rest={end:Date.now()+(exById(b.dataset.ex).rest||REST_SEC)*1000};else rest=null;
     save();render();
+    if(s.done)scrollToNext();
   }
   else if(a==='addset'){
     const arr=db.draft.entries[b.dataset.ex],l=arr[arr.length-1]||{w:'',r:''};
