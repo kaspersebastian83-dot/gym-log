@@ -25,7 +25,8 @@ body{margin:0;background:var(--slate);color:var(--chalk);font:16px/1.45 var(--sa
 #app{max-width:560px;margin:0 auto;padding:calc(12px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 12px calc(18px + env(safe-area-inset-left))}
 h1{font:600 30px/1.1 var(--serif);letter-spacing:-.01em;margin:10px 0 14px}
 .ver{font:400 12px var(--sans);color:var(--dust);margin-left:8px;letter-spacing:0;vertical-align:middle}
-.tabs{display:flex;gap:22px;margin-bottom:6px;position:sticky;top:env(safe-area-inset-top);background:var(--slate);border-bottom:1px solid var(--rule);z-index:5;box-shadow:0 calc(-1 * env(safe-area-inset-top)) 0 var(--slate)}
+.tabs{display:flex;gap:22px;margin-bottom:6px;position:sticky;top:env(safe-area-inset-top);background:var(--slate);border-bottom:1px solid var(--rule);z-index:5}
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--slate);z-index:6;pointer-events:none}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:12px 0 10px;color:var(--dust);font:500 15px var(--sans)}
 .tabs button.on{color:var(--chalk);border-bottom-color:var(--acc)}
 .card{border-top:1px solid var(--rule);padding:18px 0 16px}
@@ -79,7 +80,7 @@ svg{width:100%;height:auto;display:block}
 </div>
 <div id="restbar"></div>
 <script>
-const APP_VERSION='1.4.1'; // bump on every change
+const APP_VERSION='1.4.2'; // bump on every change
 const KEY='gymlog.v1';
 const PLAN={
  A:{name:'Session A',ex:[
