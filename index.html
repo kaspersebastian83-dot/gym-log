@@ -17,6 +17,7 @@ h1{font-size:20px;margin:6px 0 10px}
 .exh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .muted{color:var(--mut)}.small{font-size:13px}
 .hint{color:var(--acc);font-size:13px;margin:2px 0 6px}
+.hint.bump{display:block;width:100%;text-align:left;background:#0b1f12;border:1px solid var(--acc);border-radius:10px;padding:10px 12px;min-height:44px}
 .pill{background:#0b1f12;color:var(--acc);border-radius:99px;padding:2px 10px;font-variant-numeric:tabular-nums;font-size:14px;margin-left:8px}
 .set{display:flex;align-items:center;gap:6px;margin:6px 0}
 .set .n{width:20px;color:var(--mut);text-align:center}
@@ -118,12 +119,20 @@ function startWeight(ex){
   return allHit?top+STEP_KG:top;
 }
 
+function canBump(ex){
+  const last=lastFor(ex.id);
+  return !!last&&last.sets.length>=2&&last.sets.every(s=>s.r>=ex.reps);
+}
+function prefillSets(ex){
+  // Copy last session's weight and reps set by set; extra sets repeat the last logged set.
+  const last=lastFor(ex.id),n=targetSets(ex);
+  if(!last)return Array.from({length:n},()=>({w:ex.t==='sec'?0:'',r:ex.reps,done:false}));
+  const src=last.sets;
+  return Array.from({length:Math.max(n,src.length)},(_,i)=>{const p=src[Math.min(i,src.length-1)];return{w:p.w,r:p.r,done:false}});
+}
 function startSession(type){
   const entries={};
-  PLAN[type].ex.forEach(ex=>{
-    const n=targetSets(ex),w=startWeight(ex);
-    entries[ex.id]=Array.from({length:n},()=>ex.t==='sec'?{w:0,r:w===''?ex.reps:w,done:false}:{w:w,r:ex.reps,done:false});
-  });
+  PLAN[type].ex.forEach(ex=>{entries[ex.id]=prefillSets(ex)});
   db.draft={type,start:Date.now(),entries};
   save();render();
 }
@@ -153,7 +162,7 @@ function viewToday(){
   const d=db.draft,plan=PLAN[d.type];
   if(!plan){db.draft=null;save();return viewStart()}
   let fixed=false;
-  plan.ex.forEach(ex=>{if(!Array.isArray(d.entries[ex.id])){const w=startWeight(ex);d.entries[ex.id]=Array.from({length:targetSets(ex)},()=>ex.t==='sec'?{w:0,r:w===''?ex.reps:w,done:false}:{w:w,r:ex.reps,done:false});fixed=true}});
+  plan.ex.forEach(ex=>{if(!Array.isArray(d.entries[ex.id])){d.entries[ex.id]=prefillSets(ex);fixed=true}});
   plan.ex.forEach(ex=>{const arr=d.entries[ex.id];while(arr.length<targetSets(ex)){const l=arr[arr.length-1]||{w:'',r:ex.reps};arr.push({w:l.w,r:ex.reps,done:false});fixed=true}});
   if(fixed)save();
   let html='<div class="card"><b>'+plan.name+'</b><span class="pill" id="elapsed">00:00</span><div class="muted small">Target: '+SESSION_MIN+' min incl. warm-up</div></div>';
@@ -161,7 +170,8 @@ function viewToday(){
     const sets=d.entries[ex.id],last=lastFor(ex.id),sg=suggest(ex);
     html+='<div class="card"><div class="exh"><b>'+h(ex.n)+'</b><span class="muted small">'+targetSets(ex)+' × '+ex.reps+(ex.t==='sec'?' s':'')+'</span></div>';
     html+=last?'<div class="muted small">Last: '+h(fmtSets(ex,last.sets))+' ('+fmtDate(last.date)+')</div>':'<div class="muted small">First time – start light.</div>';
-    if(sg)html+='<div class="hint">'+h(sg)+'</div>';
+    if(sg&&ex.t==='kg'&&canBump(ex)&&!d.bumped?.[ex.id])html+='<button class="hint bump" data-act="bump" data-ex="'+ex.id+'">'+h(sg)+' — tap to apply</button>';
+    else if(sg&&!d.bumped?.[ex.id])html+='<div class="hint">'+h(sg)+'</div>';
     sets.forEach((s,i)=>{
       html+='<div class="set"><span class="n">'+(i+1)+'</span>';
       if(ex.t==='kg')html+='<input type="number" inputmode="decimal" step="0.5" data-ex="'+ex.id+'" data-i="'+i+'" data-k="w" value="'+h(s.w)+'" placeholder="kg"><span class="u">kg</span>';
@@ -239,6 +249,11 @@ document.addEventListener('click',e=>{
   else if(a==='addset'){
     const arr=db.draft.entries[b.dataset.ex],l=arr[arr.length-1]||{w:'',r:''};
     arr.push({w:l.w,r:l.r,done:false});save();render();
+  }
+  else if(a==='bump'){
+    const ex=exById(b.dataset.ex),top=Math.max(...lastFor(ex.id).sets.map(s=>s.w));
+    db.draft.entries[ex.id].forEach(s=>{if(!s.done){s.w=top+STEP_KG;s.r=ex.reps}});
+    (db.draft.bumped=db.draft.bumped||{})[ex.id]=true;save();render();toast(ex.n.replace(/ \(.*\)/,'')+': '+(top+STEP_KG)+' kg');
   }
   else if(a==='finish')finishSession();
   else if(a==='discard'){if(confirm('Discard this session?')){db.draft=null;rest=null;save();render()}}
