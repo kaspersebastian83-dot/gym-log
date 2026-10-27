@@ -79,7 +79,7 @@ svg{width:100%;height:auto;display:block}
 </div>
 <div id="restbar"></div>
 <script>
-const APP_VERSION='1.4.0'; // bump on every change
+const APP_VERSION='1.4.1'; // bump on every change
 const KEY='gymlog.v1';
 const PLAN={
  A:{name:'Session A',ex:[
@@ -96,7 +96,7 @@ const PLAN={
   {id:'deadlift',rest:150,bar:20,n:'Deadlift (barbell)',sets:3,reps:8,t:'kg'},
   {id:'face',rest:60,n:'Face pulls',sets:3,reps:15,t:'kg'},
   {id:'pushdown',rest:60,n:'Triceps pushdown (cable)',sets:2,reps:12,t:'kg'},
-  {id:'carry',rest:90,n:"Farmer's carry (reps = metres)",sets:3,reps:30,t:'kg'}]}
+  {id:'lateral',rest:60,n:'DB lateral raise',sets:3,reps:12,t:'kg'}]}
 };
 const ALL=[].concat(PLAN.A.ex,PLAN.B.ex);
 const REST_SEC=75, SESSION_MIN=45, STEP_KG=2.5, STEP_SEC=5;
